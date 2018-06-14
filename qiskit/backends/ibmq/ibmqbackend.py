@@ -53,7 +53,9 @@ class IBMQBackend(BaseBackend):
         Returns:
             IBMQJob: an instance derived from BaseJob
         """
-        return IBMQJob(q_job, self._api, not self.configuration['simulator'])
+        ibmq_job = IBMQJob(q_job, self._api, not self.configuration['simulator'])
+        ibmq_job.submit()
+        return ibmq_job
 
     @property
     def calibration(self):
@@ -155,22 +157,19 @@ class IBMQBackend(BaseBackend):
         """
         backend_name = self.configuration['name']
         job_list = []
-        base_index = skip
-        job_info_list = []
         if isinstance(status, str):
             status = JobStatus[status]
-        while len(job_list) < limit or len(job_info_list) < limit:
-            job_info_list = self._api.get_jobs(limit=limit, skip=base_index,
-                                               backend=backend_name)
-            for job_info in job_info_list:
-                is_device = not bool(self._configuration.get('simulator'))
-                job = IBMQJob.from_api(job_info, self._api, is_device)
-                if len(job_list) < limit:
-                    if status is None:
-                        job_list.append(job)
-                    elif job.status.get('status') == status:
-                        job_list.append(job)
-            base_index += limit
+
+        job_info_list = self._api.get_jobs(limit=limit, skip=skip,
+                                           backend=backend_name)
+        for job_info in job_info_list:
+            is_device = not bool(self._configuration.get('simulator'))
+            job = IBMQJob.from_api(job_info, self._api, is_device)
+            if len(job_list) < limit:
+                if status is None:
+                    job_list.append(job)
+                elif job.status.get('status') == status:
+                    job_list.append(job)
         return job_list
 
     def retrieve_job(self, job_id):

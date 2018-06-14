@@ -21,7 +21,7 @@ import qiskit._compiler
 from qiskit.backends.ibmq import IBMQProvider
 from qiskit.backends.ibmq.ibmqjob import IBMQJob, IBMQJobError
 from qiskit.backends.ibmq.ibmqbackend import IBMQBackendError
-from qiskit.backends import JobStatus
+from qiskit.backends.jobstatus import JobStatus
 from .common import requires_qe_access, QiskitTestCase, slow_test
 
 
@@ -99,11 +99,9 @@ class TestIBMQJob(QiskitTestCase):
         shots = qobj['config']['shots']
         quantum_job = QuantumJob(qobj, backend, preformatted=True)
         job = backend.run(quantum_job)
-        while not (job.done or job.exception):
+        while not job.done:
             self.log.info(job.status)
             time.sleep(4)
-        if job.exception:
-            raise job.exception
         self.log.info(job.status)
         result = job.result()
         counts_qx = result.get_counts(result.get_names()[0])
@@ -148,7 +146,7 @@ class TestIBMQJob(QiskitTestCase):
                                  'could be detected')
                 break
             for job in job_array:
-                self.log.info('%s %s %s %s', job.status['status'], job.running,
+                self.log.info('%s %s %s %s', job.status, job.running,
                               check, job.job_id)
             self.log.info('-'*20 + ' ' + str(time.time()-start_time))
             if time.time() - start_time > timeout:
@@ -182,8 +180,7 @@ class TestIBMQJob(QiskitTestCase):
         quantum_job = QuantumJob(qobj, backend, preformatted=True)
         num_jobs = 3
         job_array = [backend.run(quantum_job) for _ in range(num_jobs)]
-        time.sleep(3)  # give time for jobs to start (better way?)
-        job_status = [job.status['status'] for job in job_array]
+        job_status = [job.status for job in job_array]
         num_init = sum([status == JobStatus.INITIALIZING for status in job_status])
         num_queued = sum([status == JobStatus.QUEUED for status in job_status])
         num_running = sum([status == JobStatus.RUNNING for status in job_status])
@@ -232,7 +229,7 @@ class TestIBMQJob(QiskitTestCase):
         job_array = [backend.run(quantum_job) for _ in range(num_jobs)]
         success = False
         self.log.info('jobs submitted: %s', num_jobs)
-        while any([job.status['status'] == JobStatus.INITIALIZING for job in job_array]):
+        while any([job.status == JobStatus.INITIALIZING for job in job_array]):
             self.log.info('jobs initializing')
             time.sleep(1)
         for job in job_array:
