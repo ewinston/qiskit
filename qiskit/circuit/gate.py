@@ -107,14 +107,14 @@ class Gate(Instruction):
             raise TypeError('label expects a string or None')
 
     def control(self, num_ctrl_qubits=1, label=None):
-        """Return controlled version of gate
+        """Return controlled version of gate. See :class:`.ControlledGate` for usage.
 
         Args:
             num_ctrl_qubits (int): number of controls to add to gate (default=1)
             label (str): optional gate label
 
         Returns:
-            ControlledGate: controlled version of gate. This default algorithm
+            :class:`.ControlledGate`: controlled version of gate. This default algorithm
                 uses num_ctrl_qubits-1 ancillae qubits so returns a gate of size
                 num_qubits + 2*num_ctrl_qubits - 1.
 

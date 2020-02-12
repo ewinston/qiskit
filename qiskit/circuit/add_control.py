@@ -14,22 +14,27 @@
 """
 Add control to operation if supported.
 """
+
+from typing import List, Optional, Union, TYPE_CHECKING
 from qiskit import QiskitError
 from qiskit.extensions import UnitaryGate
+if TYPE_CHECKING:
+    from gate import Gate
+    from controlledgate import ControlledGate
 
 
-def add_control(operation, num_ctrl_qubits, label):
-    """Add num_ctrl_qubits controls to operation
+def add_control(operation: Union['Gate', 'ControlledGate'],
+                num_ctrl_qubits: int, label: str) -> 'ControlledGate':
+    """Add num_ctrl_qubits controls to operation. This function is meant to be
+    called from the :method:`qiskit.circuit.gate.Gate.control()` method.
 
     Args:
-        operation (Gate or ControlledGate): operation to add control to.
-        num_ctrl_qubits (int): number of controls to add to gate (default=1)
-        label (str): optional gate label
+        operation: The operation to be controlled.
+        num_ctrl_qubits: The number of controls to add to gate.
+        label: An optional gate label.
 
     Returns:
-        ControlledGate: controlled version of gate. This default algorithm
-            uses num_ctrl_qubits-1 ancillae qubits so returns a gate of size
-            num_qubits + 2*num_ctrl_qubits - 1.
+        Controlled version of gate.
     """
     import qiskit.extensions.standard as standard
     if isinstance(operation, standard.RZGate) or operation.name == 'rz':
@@ -45,13 +50,18 @@ def add_control(operation, num_ctrl_qubits, label):
     return control(operation, num_ctrl_qubits=num_ctrl_qubits, label=label)
 
 
-def control(operation, num_ctrl_qubits=1, label=None):
-    """Return controlled version of gate using controlled rotations
+def control(operation: Union['Gate', 'ControlledGate'],
+            num_ctrl_qubits: Optional[int] = 1, label: Optional[str] = None):
+    """Return controlled version of gate using controlled rotations. This function
+    first checks the name of operation to see if it knows of a method from which
+    to generate a controlled version. Currently these are `x`, `rx`, `ry`, and `rz`.
+    If a method is not directly known, it calls the unroller to convert to these gates.
 
     Args:
-        operation (Gate or Controlledgate): gate to create ControlledGate from
-        num_ctrl_qubits (int): number of controls to add to gate (default=1)
-        label (str): optional gate label
+        operation: gate to create ControlledGate from
+        num_ctrl_qubits: number of controls to add to gate (default=1)
+        label: optional gate label
+
     Returns:
         ControlledGate: controlled version of gate. This default algorithm
             uses num_ctrl_qubits-1 ancillae qubits so returns a gate of size

@@ -16,26 +16,68 @@
 Controlled unitary gate.
 """
 
+from typing import List, Optional, Union
 from qiskit.circuit.exceptions import CircuitError
 from .gate import Gate
 
 
 class ControlledGate(Gate):
-    """Controlled unitary gate."""
+    """Controlled unitary gate.
+    
+    Attributes:
+        num_ctrl_qubits: The number of control qubits to add.
+        base_gate: An instance of the target unitary to control.
+    """
 
-    def __init__(self, name, num_qubits, params, label=None, num_ctrl_qubits=1,
-                 definition=None):
-        """Create a new gate.
+    def __init__(self, name: str, num_qubits: int, params: List,
+                 label: Optional[str] = None, num_ctrl_qubits: Optional[int] = 1,
+                 definition: Optional[List] = None):
+        """Create a new ControlledGate. In the new gate the first ``num_ctrl_qubits``
+        of the gate are the controls.
 
         Args:
-            name (str): The Qobj name of the gate.
-            num_qubits (int): The number of qubits the gate acts on.
-            params (list): A list of parameters.
-            label (str or None): An optional label for the gate [Default: None]
-            num_ctrl_qubits (int): Number of control qubits.
-            definition (list): list of gate rules for implementing this gate.
+            name: The name of the gate.
+            num_qubits: The number of qubits the gate acts on.
+            params: A list of parameters for the gate.
+            label: An optional label for the gate.
+            num_ctrl_qubits: Number of control qubits.
+            definition: A list of gate rules for implementing this gate. The
+                elements of the list are tuples of (:meth:`~qiskit.circuit.Gate`, [qubit_list],
+                [clbit_list]).
+
         Raises:
-            CircuitError: num_ctrl_qubits >= num_qubits
+            CircuitError: If ``num_ctrl_qubits`` >= ``num_qubits``.
+
+        Examples:
+
+        Create a controlled standard gate and apply it to a circuit.
+
+        .. jupyter-execute::
+
+           from qiskit import QuantumCircuit, QuantumRegister
+           from qiskit.extensions.standard import HGate
+
+           qr = QuantumRegister(3)
+           qc = QuantumCircuit(qr)
+           c3h_gate = HGate().control(2)
+           qc.append(c3h_gate, qr)
+           qc.draw()
+
+        Create a controlled custom gate and apply it to a circuit.
+
+        .. jupyter-execute::
+
+           from qiskit import QuantumCircuit, QuantumRegister
+           from qiskit.extensions.standard import HGate
+
+           qc1 = QuantumCircuit(2)
+           qc1.x(0)
+           qc1.h(1)
+           custom = qc1.to_gate().control(2)
+
+           qc2 = QuantumCircuit(4)
+           qc2.append(custom, [0, 3, 1, 2])
+           qc2.draw()
         """
         super().__init__(name, num_qubits, params, label=label)
         if num_ctrl_qubits < num_qubits:
@@ -51,7 +93,7 @@ class ControlledGate(Gate):
                 else:
                     self.base_gate = base_gate
 
-    def __eq__(self, other):
+    def __eq__(self, other) -> bool:
         if not isinstance(other, ControlledGate):
             return False
         else:
@@ -59,6 +101,6 @@ class ControlledGate(Gate):
                     self.base_gate == other.base_gate and
                     super().__eq__(other))
 
-    def inverse(self):
+    def inverse(self) -> 'ControlledGate':
         """Invert this gate by calling inverse on the base gate."""
         return self.base_gate.inverse().control(self.num_ctrl_qubits)
