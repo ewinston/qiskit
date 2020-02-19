@@ -16,6 +16,7 @@
 
 import numpy as np
 from scipy.linalg import schur
+from typing import List, Optional, Union, Tuple
 
 from qiskit.circuit.exceptions import CircuitError
 from .instruction import Instruction
@@ -24,20 +25,21 @@ from .instruction import Instruction
 class Gate(Instruction):
     """Unitary gate."""
 
-    def __init__(self, name, num_qubits, params, label=None):
+    def __init__(self, name: str, num_qubits: int, params: List,
+                 label: Optional[str] = None) -> None:
         """Create a new gate.
 
         Args:
-            name (str): the Qobj name of the gate
-            num_qubits (int): the number of qubits the gate acts on.
-            params (list): a list of parameters.
-            label (str or None): An optional label for the gate [Default: None]
+            name: The Qobj name of the gate.
+            num_qubits: The number of qubits the gate acts on.
+            params: A list of parameters.
+            label: An optional label for the gate.
         """
         self._label = label
         self.definition = None
         super().__init__(name, num_qubits, 0, params)
 
-    def to_matrix(self):
+    def to_matrix(self) -> np.ndarray:
         """Return a Numpy.array for the gate unitary matrix.
 
         Raises:
@@ -46,7 +48,7 @@ class Gate(Instruction):
         """
         raise CircuitError("to_matrix not defined for this {}".format(type(self)))
 
-    def power(self, exponent):
+    def power(self, exponent: float) -> 'UnitaryGate':
         """Creates a unitary gate as `gate^exponent`.
 
         Args:
@@ -75,11 +77,11 @@ class Gate(Instruction):
         unitary_power = unitary @ np.diag(decomposition_power) @ unitary.conj().T
         return UnitaryGate(unitary_power, label='%s^%s' % (self.name, exponent))
 
-    def _return_repeat(self, exponent):
+    def _return_repeat(self, exponent: float -> 'Gate'):
         return Gate(name="%s*%s" % (self.name, exponent), num_qubits=self.num_qubits,
                     params=self.params)
 
-    def assemble(self):
+    def assemble(self) -> 'Instruction':
         """Assemble a QasmQobjInstruction"""
         instruction = super().assemble()
         if self.label:
@@ -87,12 +89,12 @@ class Gate(Instruction):
         return instruction
 
     @property
-    def label(self):
+    def label(self) -> str:
         """Return gate label"""
         return self._label
 
     @label.setter
-    def label(self, name):
+    def label(self, name: str):
         """Set gate label to name
 
         Args:
@@ -106,12 +108,15 @@ class Gate(Instruction):
         else:
             raise TypeError('label expects a string or None')
 
-    def control(self, num_ctrl_qubits=1, label=None):
+    def control(self, num_ctrl_qubits: Optional[int] = 1, label: Optional[str] = None,
+                ctrl_state: Optional[Union[int, str]] = None) -> 'ControlledGate':
         """Return controlled version of gate. See :class:`.ControlledGate` for usage.
 
         Args:
-            num_ctrl_qubits (int): number of controls to add to gate (default=1)
-            label (str): optional gate label
+            num_ctrl_qubits: number of controls to add to gate (default=1)
+            label: optional gate label
+            ctrl_state: The control state in decimal or as a bitstring
+                (e.g. '111'). If None, use 2**num_ctrl_qubits-1.
 
         Returns:
             :class:`.ControlledGate`: controlled version of gate. This default algorithm
@@ -119,14 +124,14 @@ class Gate(Instruction):
                 num_qubits + 2*num_ctrl_qubits - 1.
 
         Raises:
-            QiskitError: unrecognized mode
+            QiskitError: unrecognized mode or invalid ctrl_state
         """
         # pylint: disable=cyclic-import
         from .add_control import add_control
-        return add_control(self, num_ctrl_qubits, label)
+        return add_control(self, num_ctrl_qubits, label, ctrl_state)
 
     @staticmethod
-    def _broadcast_single_argument(qarg):
+    def _broadcast_single_argument(qarg: List) -> List:
         """Expands a single argument.
 
         For example: [q[0], q[1]] -> [q[0]], [q[1]]
@@ -137,7 +142,7 @@ class Gate(Instruction):
             yield [arg0], []
 
     @staticmethod
-    def _broadcast_2_arguments(qarg0, qarg1):
+    def _broadcast_2_arguments(qarg0: List, qarg1: List) -> List:
         if len(qarg0) == len(qarg1):
             # [[q[0], q[1]], [r[0], r[1]]] -> [q[0], r[0]]
             #                              -> [q[1], r[1]]
@@ -158,7 +163,7 @@ class Gate(Instruction):
                                (qarg0, qarg1))
 
     @staticmethod
-    def _broadcast_3_or_more_args(qargs):
+    def _broadcast_3_or_more_args(qargs: List) -> List:
         if all(len(qarg) == len(qargs[0]) for qarg in qargs):
             for arg in zip(*qargs):
                 yield list(arg), []
@@ -166,7 +171,7 @@ class Gate(Instruction):
             raise CircuitError(
                 'Not sure how to combine these qubit arguments:\n %s\n' % qargs)
 
-    def broadcast_arguments(self, qargs, cargs):
+    def broadcast_arguments(self, qargs: List, cargs: List) -> Tuple[List, List]:
         """Validation and handling of the arguments and its relationship.
 
         For example:
@@ -193,11 +198,11 @@ class Gate(Instruction):
                 [q[0], q[1]], [r[0], r[1]],  ...] -> [q[0], r[0], ...], [q[1], r[1], ...]
 
         Args:
-            qargs (List): List of quantum bit arguments.
-            cargs (List): List of classical bit arguments.
+            qargs: List of quantum bit arguments.
+            cargs: List of classical bit arguments.
 
         Returns:
-            Tuple(List, List): A tuple with single arguments.
+            A tuple with single arguments.
 
         Raises:
             CircuitError: If the input is not valid. For example, the number of
