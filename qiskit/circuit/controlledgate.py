@@ -15,10 +15,12 @@
 """
 Controlled unitary gate.
 """
-from typing import List, Optional, Union
+from typing import List, Optional, Union, TYPE_CHECKING
 from qiskit.circuit.exceptions import CircuitError
 from .gate import Gate
 from . import QuantumRegister
+if TYPE_CHECKING:
+    from qiskit.circuit import Qubit, Clbit
 
 
 class ControlledGate(Gate):
@@ -32,7 +34,7 @@ class ControlledGate(Gate):
 
     def __init__(self, name: str, num_qubits: int, params: List,
                  label: Optional[str] = None, num_ctrl_qubits: Optional[int] = 1,
-                 definition: Optional[List] = None,
+                 definition: Optional[List[Tuple[Gate, List[Qubit], List[Clbit]]]] = None,
                  ctrl_state: Optional[Union[int, str]] = None):
         """Create a new ControlledGate. In the new gate the first ``num_ctrl_qubits``
         of the gate are the controls.
