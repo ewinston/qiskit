@@ -32,7 +32,7 @@ class ControlledGate(Gate):
 
     def __init__(self, name: str, num_qubits: int, params: List,
                  label: Optional[str] = None, num_ctrl_qubits: Optional[int] = 1,
-                 definition: Optional[List] = None
+                 definition: Optional[List] = None,
                  ctrl_state: Optional[Union[int, str]] = None):
         """Create a new ControlledGate. In the new gate the first ``num_ctrl_qubits``
         of the gate are the controls.
@@ -101,7 +101,7 @@ class ControlledGate(Gate):
         self.ctrl_state = ctrl_state
 
     @property
-    def definition(self) -> List
+    def definition(self) -> List:
         """Return definition in terms of other basic gates. If the gate has
         open controls, as determined from `self.ctrl_state`, the returned
         definition is conjugated with X."""

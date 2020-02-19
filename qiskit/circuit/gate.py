@@ -77,7 +77,7 @@ class Gate(Instruction):
         unitary_power = unitary @ np.diag(decomposition_power) @ unitary.conj().T
         return UnitaryGate(unitary_power, label='%s^%s' % (self.name, exponent))
 
-    def _return_repeat(self, exponent: float -> 'Gate'):
+    def _return_repeat(self, exponent: float) -> 'Gate':
         return Gate(name="%s*%s" % (self.name, exponent), num_qubits=self.num_qubits,
                     params=self.params)
 
