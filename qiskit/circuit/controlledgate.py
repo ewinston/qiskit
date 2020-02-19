@@ -23,7 +23,7 @@ from . import QuantumRegister
 
 class ControlledGate(Gate):
     """Controlled unitary gate.
-    
+
     Attributes:
         num_ctrl_qubits (int): The number of control qubits to add.
         base_gate (Gate): An instance of the target unitary to control.
@@ -62,6 +62,7 @@ class ControlledGate(Gate):
            from qiskit import QuantumCircuit, QuantumRegister
            from qiskit.extensions.standard import HGate
 
+26
            qr = QuantumRegister(3)
            qc = QuantumCircuit(qr)
            c3h_gate = HGate().control(2)

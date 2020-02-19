@@ -14,9 +14,9 @@
 
 """Unitary gate."""
 
+from typing import List, Optional, Union, Tuple
 import numpy as np
 from scipy.linalg import schur
-from typing import List, Optional, Union, Tuple
 
 from qiskit.circuit.exceptions import CircuitError
 from .instruction import Instruction
