@@ -54,6 +54,7 @@ class ControlledGate(Gate):
         Raises:
             CircuitError: If ``num_ctrl_qubits`` >= ``num_qubits``.
             CircuitError: ctrl_state < 0 or ctrl_state > 2**num_ctrl_qubits.
+
         Examples:
 
         Create a controlled standard gate and apply it to a circuit.
