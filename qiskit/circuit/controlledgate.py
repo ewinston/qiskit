@@ -50,6 +50,7 @@ class ControlledGate(Gate):
                 a bitstring (e.g. '111'). If specified as a bitstring the length
                 must equal num_ctrl_qubits, MSB on left. If None, use
                 2**num_ctrl_qubits-1.
+
         Raises:
             CircuitError: If ``num_ctrl_qubits`` >= ``num_qubits``.
             CircuitError: ctrl_state < 0 or ctrl_state > 2**num_ctrl_qubits.
