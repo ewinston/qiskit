@@ -120,9 +120,9 @@ class Gate(Instruction):
                 (e.g. '111'). If None, use 2**num_ctrl_qubits-1.
 
         Returns:
-            :class:`.ControlledGate`: controlled version of gate. This default algorithm
-                uses num_ctrl_qubits-1 ancillae qubits so returns a gate of size
-                num_qubits + 2*num_ctrl_qubits - 1.
+            Controlled version of gate. This default algorithm
+            uses num_ctrl_qubits-1 ancillae qubits so returns a gate of size
+            num_qubits + 2*num_ctrl_qubits - 1.
 
         Raises:
             QiskitError: unrecognized mode or invalid ctrl_state
@@ -175,26 +175,26 @@ class Gate(Instruction):
     def broadcast_arguments(self, qargs: List, cargs: List) -> Tuple[List, List]:
         """Validation and handling of the arguments and its relationship.
 
-        For example:
-        `cx([q[0],q[1]], q[2])` means `cx(q[0], q[2]); cx(q[1], q[2])`. This method
-        yields the arguments in the right grouping. In the given example::
+        For example, ``cx([q[0],q[1]], q[2])`` means ``cx(q[0], q[2]); cx(q[1], q[2])``. This
+        method yields the arguments in the right grouping. In the given example::
 
             in: [[q[0],q[1]], q[2]],[]
             outs: [q[0], q[2]], []
                   [q[1], q[2]], []
 
         The general broadcasting rules are:
-         * If len(qargs) == 1::
+
+            * If len(qargs) == 1::
 
                 [q[0], q[1]] -> [q[0]],[q[1]]
 
-         * If len(qargs) == 2::
+            * If len(qargs) == 2::
 
                 [[q[0], q[1]], [r[0], r[1]]] -> [q[0], r[0]], [q[1], r[1]]
                 [[q[0]], [r[0], r[1]]]       -> [q[0], r[0]], [q[0], r[1]]
                 [[q[0], q[1]], [r[0]]]       -> [q[0], r[0]], [q[1], r[0]]
 
-         * If len(qargs) >= 3::
+            * If len(qargs) >= 3::
 
                 [q[0], q[1]], [r[0], r[1]],  ...] -> [q[0], r[0], ...], [q[1], r[1], ...]
 
