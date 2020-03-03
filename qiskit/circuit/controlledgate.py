@@ -62,7 +62,6 @@ class ControlledGate(Gate):
            from qiskit import QuantumCircuit, QuantumRegister
            from qiskit.extensions.standard import HGate
 
-26
            qr = QuantumRegister(3)
            qc = QuantumCircuit(qr)
            c3h_gate = HGate().control(2)
