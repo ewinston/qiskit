@@ -37,6 +37,9 @@ class ControlledGate(Gate):
         """Create a new ControlledGate. In the new gate the first ``num_ctrl_qubits``
         of the gate are the controls.
 
+        Attributes:
+            num_ctrl_qubits (int): The number of control qubits.
+
         Args:
             name: The name of the gate.
             num_qubits: The number of qubits the gate acts on.
