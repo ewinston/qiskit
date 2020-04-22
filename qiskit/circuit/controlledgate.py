@@ -19,26 +19,19 @@ from typing import Tuple, List, Optional, Union
 from qiskit.circuit.exceptions import CircuitError
 from .gate import Gate
 from . import QuantumRegister
+from .quantumregister import Qubit
+from .quantumcircuit import Clbit
 
 
 class ControlledGate(Gate):
-    """Controlled unitary gate.
-
-    Attributes:
-        num_ctrl_qubits (int): The number of control qubits to add.
-        base_gate (Gate): An instance of the target unitary to control.
-        ctrl_state (int): The control state in decimal notation.
-    """
+    """Controlled unitary gate."""
 
     def __init__(self, name: str, num_qubits: int, params: List,
                  label: Optional[str] = None, num_ctrl_qubits: Optional[int] = 1,
-                 definition: Optional[List[Tuple[Gate, List['Qubit'], List['Clbit']]]] = None,
+                 definition: Optional[List[Tuple[Gate, List[Qubit], List[Clbit]]]] = None,
                  ctrl_state: Optional[Union[int, str]] = None):
         """Create a new ControlledGate. In the new gate the first ``num_ctrl_qubits``
         of the gate are the controls.
-
-        Attributes:
-            num_ctrl_qubits (int): The number of control qubits.
 
         Args:
             name: The name of the gate.
@@ -166,7 +159,7 @@ class ControlledGate(Gate):
         else:
             raise CircuitError('invalid control state specification')
 
-    def __eq__(self, other: 'ControlledGate') -> bool:
+    def __eq__(self, other) -> bool:
         if not isinstance(other, ControlledGate):
             return False
         else:
