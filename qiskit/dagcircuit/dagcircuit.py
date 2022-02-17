@@ -474,7 +474,7 @@ class DAGCircuit:
         else:
             self._op_names[op.name] -= 1
 
-    def _add_op_node(self, op, qargs, cargs):
+    def _add_op_node(self, op, qargs, cargs, params=None):
         """Add a new operation node to the graph and assign properties.
 
         Args:
@@ -485,7 +485,7 @@ class DAGCircuit:
             int: The integer node index for the new op node on the DAG
         """
         # Add a new operation node to the graph
-        new_node = DAGOpNode(op=op, qargs=qargs, cargs=cargs)
+        new_node = DAGOpNode(op=op, qargs=qargs, cargs=cargs, params=params)
         node_index = self._multi_graph.add_node(new_node)
         new_node._node_id = node_index
         self._increment_op(op)
@@ -510,13 +510,14 @@ class DAGCircuit:
 
         return target_dag
 
-    def apply_operation_back(self, op, qargs=None, cargs=None):
+    def apply_operation_back(self, op, qargs=None, cargs=None, params=None):
         """Apply an operation to the output of the circuit.
 
         Args:
             op (qiskit.circuit.Instruction): the operation associated with the DAG node
             qargs (list[Qubit]): qubits that op will be applied to
             cargs (list[Clbit]): cbits that op will be applied to
+            params (list[float|ParameterExpression]): list of parameters taken by instruction
         Returns:
             DAGOpNode: the node for the op that was added to the dag
 
@@ -526,6 +527,7 @@ class DAGCircuit:
         """
         qargs = qargs or []
         cargs = cargs or []
+        params = params or []
 
         all_cbits = self._bits_in_condition(op.condition)
         all_cbits = set(all_cbits).union(cargs)
@@ -534,7 +536,7 @@ class DAGCircuit:
         self._check_bits(qargs, self.output_map)
         self._check_bits(all_cbits, self.output_map)
 
-        node_index = self._add_op_node(op, qargs, cargs)
+        node_index = self._add_op_node(op, qargs, cargs, params)
 
         # Add new in-edges from predecessors of the output nodes to the
         # operation node while deleting the old in-edges of the output nodes

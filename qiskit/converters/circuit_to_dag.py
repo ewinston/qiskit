@@ -58,8 +58,11 @@ def circuit_to_dag(circuit):
     for register in circuit.cregs:
         dagcircuit.add_creg(register)
 
-    for instruction, qargs, cargs in circuit.data:
-        dagcircuit.apply_operation_back(instruction.copy(), qargs, cargs)
+    for inst_context in circuit.data:
+        dagcircuit.apply_operation_back(inst_context.instruction.copy(),
+                                        inst_context.qargs,
+                                        inst_context.cargs,
+                                        inst_context.params)
 
     dagcircuit.duration = circuit.duration
     dagcircuit.unit = circuit.unit

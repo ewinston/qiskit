@@ -40,6 +40,7 @@ import numpy as np
 from qiskit.exceptions import QiskitError, MissingOptionalLibraryError
 from qiskit.utils.multiprocessing import is_main_process
 from qiskit.circuit.instruction import Instruction
+from qiskit.circuit.instructioncontext import InstructionContext
 from qiskit.circuit.gate import Gate
 from qiskit.circuit.parameter import Parameter
 from qiskit.qasm.qasm import Qasm
@@ -318,8 +319,9 @@ class QuantumCircuit:
         self._data = []
         self._parameter_table = ParameterTable()
 
-        for inst, qargs, cargs in data_input:
-            self.append(inst, qargs, cargs)
+        for inst_context in data_input:
+            self.append(*inst_context)
+            
 
     @property
     def calibrations(self) -> dict:
@@ -448,8 +450,8 @@ class QuantumCircuit:
             self.qubits, self.clbits, *self.qregs, *self.cregs, name=self.name + "_reverse"
         )
 
-        for inst, qargs, cargs in reversed(self.data):
-            reverse_circ._append(inst.reverse_ops(), qargs, cargs)
+        for inst_context in reversed(self.data):
+            reverse_circ._append(inst_context.reverse())
 
         reverse_circ.duration = self.duration
         reverse_circ.unit = self.unit
@@ -503,10 +505,11 @@ class QuantumCircuit:
         new_qubits = circ.qubits
         new_clbits = circ.clbits
 
-        for inst, qargs, cargs in self.data:
-            new_qargs = [new_qubits[num_qubits - old_qubits.index(q) - 1] for q in qargs]
-            new_cargs = [new_clbits[num_clbits - old_clbits.index(c) - 1] for c in cargs]
-            circ._append(inst, new_qargs, new_cargs)
+        #for inst, qargs, cargs in self.data:
+        for inst_context in self.data:
+            new_qargs = [new_qubits[num_qubits - old_qubits.index(q) - 1] for q in inst_context.qargs]
+            new_cargs = [new_clbits[num_clbits - old_clbits.index(c) - 1] for c in inst_context.cargs]
+            circ._append(InstructionContext(inst_context.instruction, new_qargs, new_cargs, inst_context.parameters))
         return circ
 
     def inverse(self) -> "QuantumCircuit":
@@ -551,8 +554,8 @@ class QuantumCircuit:
             global_phase=-self.global_phase,
         )
 
-        for inst, qargs, cargs in reversed(self._data):
-            inverse_circ._append(inst.inverse(), qargs, cargs)
+        for inst_context in reversed(self._data):
+            inverse_circ._append(instr_context.inverse())
         return inverse_circ
 
     def repeat(self, reps: int) -> "QuantumCircuit":
@@ -1199,6 +1202,7 @@ class QuantumCircuit:
         instruction: Instruction,
         qargs: Optional[Sequence[QubitSpecifier]] = None,
         cargs: Optional[Sequence[ClbitSpecifier]] = None,
+        params: Optional[Sequence[ParameterValueType]] = None
     ) -> InstructionSet:
         """Append one or more instructions to the end of the circuit, modifying
         the circuit in place. Expands qargs and cargs.
@@ -1207,9 +1211,9 @@ class QuantumCircuit:
             instruction (qiskit.circuit.Instruction): Instruction instance to append
             qargs (list(argument)): qubits to attach instruction to
             cargs (list(argument)): clbits to attach instruction to
-
+            params (list(argument)): scalar parameters of instruction
         Returns:
-            qiskit.circuit.Instruction: a handle to the instruction that was just added
+            qiskit.circuit.InstructionSet: a handle to the instruction that was just added
 
         Raises:
             CircuitError: if object passed is a subclass of Instruction
@@ -1229,6 +1233,10 @@ class QuantumCircuit:
         if not isinstance(instruction, Instruction) and hasattr(instruction, "to_instruction"):
             instruction = instruction.to_instruction()
 
+        if params is None:
+            # check if instruction is old style. change after deprecation of old style
+            if hasattr(instruction, "params"):
+                params = instruction.params
         # Make copy of parameterized gate instances
         if hasattr(instruction, "params"):
             is_parameter = any(isinstance(param, Parameter) for param in instruction.params)
@@ -1246,11 +1254,12 @@ class QuantumCircuit:
             requester = self._resolve_classical_resource
         instructions = InstructionSet(resource_requester=requester)
         for qarg, carg in instruction.broadcast_arguments(expanded_qargs, expanded_cargs):
-            instructions.add(appender(instruction, qarg, carg), qarg, carg)
+            instructions.add(appender(instruction, qarg, carg, params), qarg, carg, params)
         return instructions
 
     def _append(
-        self, instruction: Instruction, qargs: Sequence[Qubit], cargs: Sequence[Clbit]
+            self, instruction: Instruction, qargs: Sequence[Qubit], cargs: Sequence[Clbit],
+            params: Sequence[ParameterValueType] = None
     ) -> Instruction:
         """Append an instruction to the end of the circuit, modifying
         the circuit in place.
@@ -1269,6 +1278,7 @@ class QuantumCircuit:
             instruction: Instruction instance to append
             qargs: qubits to attach instruction to
             cargs: clbits to attach instruction to
+            params: scalar parameters of instruction
 
         Returns:
             Instruction: a handle to the instruction that was just added
@@ -1286,7 +1296,7 @@ class QuantumCircuit:
         self._check_cargs(cargs)
 
         # add the instruction onto the given wires
-        instruction_context = instruction, qargs, cargs
+        instruction_context = InstructionContext(instruction, qargs, cargs, params)
         self._data.append(instruction_context)
 
         self._update_parameter_table(instruction)
@@ -4666,8 +4676,8 @@ class QuantumCircuit:
         """
         if self.duration is None:
             # circuit has only delays, this is kind of scheduled
-            for inst, _, _ in self.data:
-                if not isinstance(inst, Delay):
+            for inst_context in self.data:
+                if not isinstance(inst_context.instruction, Delay):
                     raise CircuitError(
                         "qubit_start_time undefined. Circuit must be scheduled first."
                     )
@@ -4677,10 +4687,10 @@ class QuantumCircuit:
 
         starts = {q: 0 for q in qubits}
         dones = {q: False for q in qubits}
-        for inst, qargs, _ in self.data:
+        for inst_context in self.data:
             for q in qubits:
-                if q in qargs:
-                    if isinstance(inst, Delay):
+                if q in inst_context.qargs:
+                    if isinstance(inst_context.instruction, Delay):
                         if not dones[q]:
                             starts[q] += inst.duration
                     else:
@@ -4708,8 +4718,8 @@ class QuantumCircuit:
         """
         if self.duration is None:
             # circuit has only delays, this is kind of scheduled
-            for inst, _, _ in self.data:
-                if not isinstance(inst, Delay):
+            for inst_context in self.data:
+                if not isinstance(inst_context.instruction, Delay):
                     raise CircuitError(
                         "qubit_stop_time undefined. Circuit must be scheduled first."
                     )
@@ -4719,12 +4729,13 @@ class QuantumCircuit:
 
         stops = {q: self.duration for q in qubits}
         dones = {q: False for q in qubits}
-        for inst, qargs, _ in reversed(self.data):
+        #for inst, qargs, _ in reversed(self.data):
+        for inst_context in reversed(self.data):
             for q in qubits:
-                if q in qargs:
-                    if isinstance(inst, Delay):
+                if q in inst_context.qargs:
+                    if isinstance(inst_context.instruction, Delay):
                         if not dones[q]:
-                            stops[q] -= inst.duration
+                            stops[q] -= inst_context.instruction.duration
                     else:
                         dones[q] = True
             if len(qubits) == len([done for done in dones.values() if done]):  # all done

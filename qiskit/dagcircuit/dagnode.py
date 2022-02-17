@@ -22,9 +22,9 @@ from qiskit.exceptions import QiskitError
 class DAGNode:
     """Parent class for DAGOpNode, DAGInNode, and DAGOutNode."""
 
-    __slots__ = ["_type", "_op", "_qargs", "_cargs", "_wire", "_node_id"]
+    __slots__ = ["_type", "_op", "_qargs", "_cargs", "_wire", "_node_id", "_params"]
 
-    def __init__(self, type=None, op=None, name=None, qargs=None, cargs=None, wire=None, nid=-1):
+    def __init__(self, type=None, op=None, name=None, qargs=None, cargs=None, wire=None, nid=-1, params=None):
         """Create a node"""
         if type is not None:
             warnings.warn(
@@ -320,9 +320,9 @@ class DAGNode:
 class DAGOpNode(DAGNode):
     """Object to represent an Instruction at a node in the DAGCircuit."""
 
-    __slots__ = ["_type", "op", "qargs", "cargs", "sort_key"]
+    __slots__ = ["_type", "op", "qargs", "cargs", "sort_key", "params"]
 
-    def __init__(self, op, qargs=None, cargs=None):
+    def __init__(self, op, qargs=None, cargs=None, params=None):
         """Create an Instruction node"""
         super().__init__()
         self._type = "op"  # Remove when DAGNode.type is removed
@@ -330,6 +330,7 @@ class DAGOpNode(DAGNode):
         self.qargs = qargs
         self.cargs = cargs
         self.sort_key = str(self.qargs)
+        self.params = params
 
     @property
     def name(self):

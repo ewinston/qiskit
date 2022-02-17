@@ -30,13 +30,17 @@ class QuantumCircuitData(MutableSequence):
         return self._circuit._data[i]
 
     def __setitem__(self, key, value):
-        instruction, qargs, cargs = value
-
+        try:
+            instruction, qargs, cargs = value
+        except ValueError:
+            instruction, qargs, cargs, params = value
+        
         if not isinstance(instruction, Instruction) and hasattr(instruction, "to_instruction"):
             instruction = instruction.to_instruction()
 
         expanded_qargs = [self._circuit.qbit_argument_conversion(qarg) for qarg in qargs or []]
         expanded_cargs = [self._circuit.cbit_argument_conversion(carg) for carg in cargs or []]
+        expanded_params = [self._circuit.param_argument_conversion(params) for param in params or []]
 
         broadcast_args = list(instruction.broadcast_arguments(expanded_qargs, expanded_cargs))
 

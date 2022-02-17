@@ -12,7 +12,8 @@
 
 """Test operations on circuit.data."""
 
-from qiskit.circuit import QuantumCircuit, QuantumRegister, Parameter
+from qiskit.circuit import (QuantumCircuit, QuantumRegister, Parameter,
+                            InstructionContext)
 from qiskit.circuit.library import HGate, XGate, CXGate, RXGate
 
 from qiskit.test import QiskitTestCase
@@ -120,21 +121,22 @@ class TestQuantumCircuitInstructionData(QiskitTestCase):
         h_slice = qc.data[::2]
         cx_slice = qc.data[1:-1:2]
 
+        breakpoint()
         self.assertEqual(
             h_slice,
             [
-                (HGate(), [qr[0]], []),
-                (HGate(), [qr[1]], []),
-                (HGate(), [qr[1]], []),
-                (HGate(), [qr[0]], []),
+                InstructionContext(HGate(), [qr[0]], []),
+                InstructionContext(HGate(), [qr[1]], []),
+                InstructionContext(HGate(), [qr[1]], []),
+                InstructionContext(HGate(), [qr[0]], []),
             ],
         )
         self.assertEqual(
             cx_slice,
             [
-                (CXGate(), [qr[0], qr[1]], []),
-                (CXGate(), [qr[1], qr[0]], []),
-                (CXGate(), [qr[0], qr[1]], []),
+                InstructionContext(CXGate(), [qr[0], qr[1]], []),
+                InstructionContext(CXGate(), [qr[1], qr[0]], []),
+                InstructionContext(CXGate(), [qr[0], qr[1]], []),
             ],
         )
 
@@ -183,7 +185,6 @@ class TestQuantumCircuitInstructionData(QiskitTestCase):
         g1 = qc.h(0)
         g2 = qc.cx(0, 1)
         g3 = qc.h(1)
-
         self.assertEqual(
             str(qc.data),
             "[({}, {}, {}), ({}, {}, {}), ({}, {}, {})]".format(
@@ -256,7 +257,7 @@ class TestQuantumCircuitInstructionData(QiskitTestCase):
         expected_qc.cx(0, 1)
 
         self.assertEqual(qc, expected_qc)
-        self.assertEqual(last_h, (HGate(), [qr[1]], []))
+        self.assertEqual(last_h, InstructionContext(HGate(), [qr[1]], [], []))
 
     def test_clear_gates(self):
         """Verify emptying a circuit via circuit.data.clear."""

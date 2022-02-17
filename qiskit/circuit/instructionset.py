@@ -89,7 +89,7 @@ def _requester_from_cregs(cregs: Tuple[ClassicalRegister]) -> Callable:
 class InstructionSet:
     """Instruction collection, and their contexts."""
 
-    __slots__ = ("instructions", "qargs", "cargs", "_requester")
+    __slots__ = ("instructions", "qargs", "cargs", "params", "_requester")
 
     def __init__(self, circuit_cregs=None, *, resource_requester: Optional[Callable] = None):
         """New collection of instructions.
@@ -126,6 +126,7 @@ class InstructionSet:
         self.instructions = []
         self.qargs = []
         self.cargs = []
+        self.params = []
         if circuit_cregs is not None:
             if resource_requester is not None:
                 raise CircuitError("Cannot pass both 'circuit_cregs' and 'resource_requester'.")
@@ -148,13 +149,20 @@ class InstructionSet:
         """Return instruction at index"""
         return self.instructions[i]
 
-    def add(self, gate, qargs, cargs):
+    def add(self, gate, qargs, cargs, params=[]):
         """Add an instruction and its context (where it is attached)."""
         if not isinstance(gate, Instruction):
             raise CircuitError("attempt to add non-Instruction" + " to InstructionSet")
         self.instructions.append(gate)
         self.qargs.append(qargs)
         self.cargs.append(cargs)
+        if not params:
+            if  hasattr(gate, 'params') and gate.params:
+                self.params.append(gate.params)
+            else:
+                self.params.append(params)
+        else:
+            self.params.append(params)
 
     def inverse(self):
         """Invert all instructions."""

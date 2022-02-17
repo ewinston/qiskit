@@ -54,15 +54,16 @@ class Instruction:
     # NOTE: Using this attribute may change in the future (See issue # 5811)
     _directive = False
 
-    def __init__(self, name, num_qubits, num_clbits, params, duration=None, unit="dt", label=None):
+    def __init__(self, name, num_qubits, num_clbits, params, num_scalar_params=0, duration=None, unit="dt", label=None):
         """Create a new instruction.
 
         Args:
             name (str): instruction name
             num_qubits (int): instruction's qubit width
             num_clbits (int): instruction's clbit width
-            params (list[int|float|complex|str|ndarray|list|ParameterExpression]):
-                list of parameters
+            params (list[str|list|ndarray]):
+                list of non-scalar parameters
+            num_scalar_params (int): number of scalar parameters which represent scalar types including ParameterExpression.
             duration (int or float): instruction's duration. it must be integer if ``unit`` is 'dt'
             unit (str): time unit of duration
             label (str or None): An optional label for identifying the instruction.
@@ -469,7 +470,7 @@ class Instruction:
 
         return self._qasmif(name_param)
 
-    def broadcast_arguments(self, qargs, cargs):
+    def broadcast_arguments(self, qargs, cargs, params=None):
         """
         Validation of the arguments.
 
@@ -493,7 +494,11 @@ class Instruction:
         #  [[q[0], q[1]], [c[0], c[1]]] -> [q[0], c[0]], [q[1], c[1]]
         flat_qargs = [qarg for sublist in qargs for qarg in sublist]
         flat_cargs = [carg for sublist in cargs for carg in sublist]
-        yield flat_qargs, flat_cargs
+        if params:
+            flat_params = [param for sublist in params for param in sublist]
+            yield flat_qargs, flat_cargs, flat_prams
+        else:
+            yield flat_qargs, flat_cargs
 
     def _return_repeat(self, exponent):
         return Instruction(
