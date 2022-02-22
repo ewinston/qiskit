@@ -45,6 +45,7 @@ class InstructionContext:
     how Instruction behaves in cthe QuantumCircuit. It is an element of the QuantumCircuit.data
     list.
     """
+    __slots__ = ['instruction', 'qargs', 'cargs', 'params']
     instruction: Instruction
     qargs: Tuple['QubitSpecifier']
     cargs: Tuple['ClbitSpecifier']
