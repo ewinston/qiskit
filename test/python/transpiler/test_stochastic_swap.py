@@ -13,14 +13,22 @@
 """Test the Stochastic Swap pass"""
 
 import unittest
+from ddt import ddt, data
 from qiskit.transpiler.passes import StochasticSwap
 from qiskit.transpiler import CouplingMap, PassManager
 from qiskit.transpiler.exceptions import TranspilerError
 from qiskit.converters import circuit_to_dag, dag_to_circuit
 from qiskit import QuantumRegister, ClassicalRegister, QuantumCircuit
 from qiskit.test import QiskitTestCase
+from qiskit.quantum_info.analysis.distance import hellinger_distance
+from qiskit.utils import optionals
+
+if optionals.HAS_AER:
+    # pylint: disable=import-error,no-name-in-module
+    from qiskit.providers.aer import Aer
 
 
+@ddt
 class TestStochasticSwap(QiskitTestCase):
     """
     Tests the StochasticSwap pass.
@@ -565,6 +573,388 @@ class TestStochasticSwap(QiskitTestCase):
         after = PassManager(stochastic).run(circuit)
         after = circuit_to_dag(after)
         self.assertEqual(expected_dag, after)
+
+    @unittest.skipUnless(optionals.HAS_AER, "Qiskit Aer is required to run this test")
+    def test_controlflow_pre_if_else_route(self):
+        """test swap with if else controlflow construct"""
+        num_qubits = 5
+        qreg = QuantumRegister(num_qubits, "q")
+        creg = ClassicalRegister(num_qubits)
+        coupling = CouplingMap([(i, i + 1) for i in range(num_qubits - 1)])
+        qc = QuantumCircuit(qreg, creg)
+        qc.h(0)
+        qc.cx(0, 2)
+        qc.measure(2, 2)
+        true_body = QuantumCircuit(qreg, creg)
+        true_body.x(3)
+        false_body = QuantumCircuit(qreg, creg)
+        false_body.x(4)
+        qc.if_else((creg[2], 0), true_body, false_body, qreg, creg)
+        qc.measure(qreg, creg)
+
+        dag = circuit_to_dag(qc)
+        cdag = StochasticSwap(coupling, seed=82).run(dag)
+        cqc = dag_to_circuit(cdag)
+
+        sim = Aer.get_backend("aer_simulator")
+        in_results = sim.run(qc, shots=4096).result().get_counts()
+        out_results = sim.run(cqc, shots=4096).result().get_counts()
+        self.assertEqual(set(in_results), set(out_results))
+
+    @unittest.skipUnless(optionals.HAS_AER, "Qiskit Aer is required to run this test")
+    def test_controlflow_pre_if_else_route_post_x(self):
+        """test swap with if else controlflow construct; pre-cx and post x"""
+        num_qubits = 5
+        qreg = QuantumRegister(num_qubits, "q")
+        creg = ClassicalRegister(num_qubits)
+        coupling = CouplingMap([(i, i + 1) for i in range(num_qubits - 1)])
+        qc = QuantumCircuit(qreg, creg)
+        qc.h(0)
+        qc.cx(0, 2)
+        qc.measure(2, 2)
+        true_body = QuantumCircuit(qreg, creg)
+        true_body.x(3)
+        false_body = QuantumCircuit(qreg, creg)
+        false_body.x(4)
+        qc.if_else((creg[2], 0), true_body, false_body, qreg, creg)
+        qc.x(0)
+        qc.measure(qreg, creg)
+
+        dag = circuit_to_dag(qc)
+        cdag = StochasticSwap(coupling, seed=431).run(dag)
+        cqc = dag_to_circuit(cdag)
+
+        sim = Aer.get_backend("aer_simulator")
+        in_results = sim.run(qc, shots=4096).result().get_counts()
+        out_results = sim.run(cqc, shots=4096).result().get_counts()
+        self.assertEqual(set(in_results), set(out_results))
+
+    @unittest.skipUnless(optionals.HAS_AER, "Qiskit Aer is required to run this test")
+    def test_controlflow_post_if_else_route(self):
+        """test swap with if else controlflow construct; post cx"""
+        num_qubits = 5
+        qreg = QuantumRegister(num_qubits, "q")
+        creg = ClassicalRegister(num_qubits)
+        coupling = CouplingMap([(i, i + 1) for i in range(num_qubits - 1)])
+        qc = QuantumCircuit(qreg, creg)
+        qc.h(0)
+        qc.measure(0, 0)
+        true_body = QuantumCircuit(qreg, creg)
+        true_body.x(3)
+        false_body = QuantumCircuit(qreg, creg)
+        false_body.x(4)
+        qc.if_else((creg[0], 0), true_body, false_body, qreg, creg)
+        qc.cx(0, 2)
+        qc.measure(qreg, creg)
+
+        dag = circuit_to_dag(qc)
+        cdag = StochasticSwap(coupling, seed=6508).run(dag)
+        cqc = dag_to_circuit(cdag)
+
+        sim = Aer.get_backend("aer_simulator")
+        in_results = sim.run(qc, shots=4096).result().get_counts()
+        out_results = sim.run(cqc, shots=4096).result().get_counts()
+        self.assertEqual(set(in_results), set(out_results))
+
+    @unittest.skipUnless(optionals.HAS_AER, "Qiskit Aer is required to run this test")
+    def test_controlflow_pre_if_else2(self):
+        """test swap with if else controlflow construct; cx in if statement"""
+        num_qubits = 5
+        qreg = QuantumRegister(num_qubits, "q")
+        creg = ClassicalRegister(num_qubits)
+        coupling = CouplingMap([(i, i + 1) for i in range(num_qubits - 1)])
+        qc = QuantumCircuit(qreg, creg)
+        qc.h(0)
+        qc.cx(0, 2)
+        qc.x(1)
+        qc.measure(0, 0)
+        true_body = QuantumCircuit(qreg, creg)
+        true_body.x(0)
+        false_body = QuantumCircuit(qreg, creg)
+        qc.if_else((creg[0], 0), true_body, false_body, qreg, creg)
+        qc.measure(qreg, creg)
+
+        dag = circuit_to_dag(qc)
+        cdag = StochasticSwap(coupling, seed=38).run(dag)
+        cqc = dag_to_circuit(cdag)
+
+        sim = Aer.get_backend("aer_simulator")
+        in_results = sim.run(qc, shots=4096, seed_simulator=10).result().get_counts()
+        out_results = sim.run(cqc, shots=4096, seed_simulator=11).result().get_counts()
+        self.assertLess(hellinger_distance(in_results, out_results), 0.01)
+
+    @unittest.skipUnless(optionals.HAS_AER, "Qiskit Aer is required to run this test")
+    def test_controlflow_intra_if_else_route(self):
+        """test swap with if else controlflow construct"""
+        num_qubits = 5
+        qreg = QuantumRegister(num_qubits, "q")
+        creg = ClassicalRegister(num_qubits)
+        coupling = CouplingMap([(i, i + 1) for i in range(num_qubits - 1)])
+        qc = QuantumCircuit(qreg, creg)
+        qc.h(0)
+        qc.x(1)
+        qc.measure(0, 0)
+        true_body = QuantumCircuit(qreg, creg)
+        true_body.cx(0, 2)
+        false_body = QuantumCircuit(qreg, creg)
+        false_body.cx(0, 4)
+        qc.if_else((creg[0], 0), true_body, false_body, qreg, creg)
+        qc.measure(qreg, creg)
+
+        dag = circuit_to_dag(qc)
+        cdag = StochasticSwap(coupling, seed=21).run(dag)
+        cqc = dag_to_circuit(cdag)
+
+        sim = Aer.get_backend("aer_simulator")
+        in_results = sim.run(qc, shots=4096, seed_simulator=10).result().get_counts()
+        out_results = sim.run(cqc, shots=4096, seed_simulator=11).result().get_counts()
+        self.assertLess(hellinger_distance(in_results, out_results), 0.01)
+
+    @unittest.skipUnless(optionals.HAS_AER, "Qiskit Aer is required to run this test")
+    @data(1, 2, 3, 4, 5)
+    def test_controlflow_pre_intra_if_else(self, seed):
+        """test swap with if else controlflow construct; cx in if statement"""
+        num_qubits = 5
+        qreg = QuantumRegister(num_qubits, "q")
+        creg = ClassicalRegister(num_qubits)
+        coupling = CouplingMap([(i, i + 1) for i in range(num_qubits - 1)])
+        qc = QuantumCircuit(qreg, creg)
+        qc.h(0)
+        qc.cx(0, 2)
+        qc.x(1)
+        qc.measure(0, 0)
+        true_body = QuantumCircuit(qreg, creg)
+        true_body.cx(0, 2)
+        false_body = QuantumCircuit(qreg, creg)
+        false_body.cx(0, 4)
+        qc.if_else((creg[0], 0), true_body, false_body, qreg, creg)
+        qc.measure(qreg, creg)
+
+        dag = circuit_to_dag(qc)
+        cdag = StochasticSwap(coupling, seed=seed).run(dag)
+        cqc = dag_to_circuit(cdag)
+
+        sim = Aer.get_backend("aer_simulator")
+        in_results = sim.run(qc, shots=4096, seed_simulator=10).result().get_counts()
+        out_results = sim.run(cqc, shots=4096, seed_simulator=11).result().get_counts()
+        self.assertLess(hellinger_distance(in_results, out_results), 0.01)
+
+    @unittest.skipUnless(optionals.HAS_AER, "Qiskit Aer is required to run this test")
+    def test_controlflow_pre_intra_post_if_else(self):
+        """test swap with if else controlflow construct; cx before, in, and after if
+        statement"""
+        num_qubits = 5
+        qreg = QuantumRegister(num_qubits, "q")
+        creg = ClassicalRegister(num_qubits)
+        coupling = CouplingMap([(i, i + 1) for i in range(num_qubits - 1)])
+        qc = QuantumCircuit(qreg, creg)
+        qc.h(0)
+        qc.cx(0, 2)
+        qc.x(1)
+        qc.measure(0, 0)
+        true_body = QuantumCircuit(qreg, creg)
+        true_body.cx(0, 2)
+        false_body = QuantumCircuit(qreg, creg)
+        false_body.cx(0, 4)
+        qc.if_else((creg[0], 0), true_body, false_body, qreg, creg)
+        qc.h(3)
+        qc.cx(3, 0)
+        qc.barrier()
+        qc.measure(qreg, creg)
+
+        dag = circuit_to_dag(qc)
+        cdag = StochasticSwap(coupling, seed=58).run(dag)
+        cqc = dag_to_circuit(cdag)
+
+        sim = Aer.get_backend("aer_simulator")
+        in_results = sim.run(qc, shots=4096, seed_simulator=10).result().get_counts()
+        out_results = sim.run(cqc, shots=4096, seed_simulator=11).result().get_counts()
+        self.assertLess(hellinger_distance(in_results, out_results), 0.01)
+
+    @unittest.skipUnless(optionals.HAS_AER, "Qiskit Aer is required to run this test")
+    def test_controlflow_no_layout_change(self):
+        """test controlflow with no layout change needed"""
+        num_qubits = 5
+        qreg = QuantumRegister(num_qubits, "q")
+        creg = ClassicalRegister(num_qubits)
+        coupling = CouplingMap([(i, i + 1) for i in range(num_qubits - 1)])
+        qc = QuantumCircuit(qreg, creg)
+        qc.h(0)
+        qc.cx(0, 2)
+        qc.x(1)
+        qc.measure(0, 0)
+        true_body = QuantumCircuit(qreg, creg)
+        true_body.x(2)
+        false_body = QuantumCircuit(qreg, creg)
+        false_body.x(4)
+        qc.if_else((creg[0], 0), true_body, false_body, qreg, creg)
+        qc.barrier()
+        qc.measure(qreg, creg)
+
+        dag = circuit_to_dag(qc)
+        cdag = StochasticSwap(coupling, seed=23).run(dag)
+        cqc = dag_to_circuit(cdag)
+
+        sim = Aer.get_backend("aer_simulator")
+        in_results = sim.run(qc, shots=4096, seed_simulator=10).result().get_counts()
+        out_results = sim.run(cqc, shots=4096, seed_simulator=11).result().get_counts()
+        self.assertLess(hellinger_distance(in_results, out_results), 0.01)
+
+    @unittest.skipUnless(optionals.HAS_AER, "Qiskit Aer is required to run this test")
+    @data(1, 2, 3, 4, 5)
+    def test_controlflow_for_loop(self, nloops):
+        """test for loop"""
+        num_qubits = 3
+        qreg = QuantumRegister(num_qubits, "q")
+        creg = ClassicalRegister(num_qubits)
+        coupling = CouplingMap([(i, i + 1) for i in range(num_qubits - 1)])
+        qc = QuantumCircuit(qreg, creg)
+        qc.h(0)
+        qc.x(1)
+        for_body = QuantumCircuit(qreg, creg)
+        for_body.cx(0, 2)
+        loop_parameter = None
+        qc.for_loop(range(nloops), loop_parameter, for_body, qreg, creg)
+        qc.barrier()
+        qc.measure(qreg, creg)
+
+        dag = circuit_to_dag(qc)
+        cdag = StochasticSwap(coupling, seed=687).run(dag)
+        cqc = dag_to_circuit(cdag)
+
+        sim = Aer.get_backend("aer_simulator")
+        in_results = sim.run(qc, shots=4096, seed_simulator=10).result().get_counts()
+        out_results = sim.run(cqc, shots=4096, seed_simulator=11).result().get_counts()
+        self.assertLess(hellinger_distance(in_results, out_results), 0.01)
+
+    @unittest.skipUnless(optionals.HAS_AER, "Qiskit Aer is required to run this test")
+    def test_controlflow_while_loop(self):
+        """test while loop"""
+        from qiskit.circuit.library.standard_gates import CCXGate
+
+        shots = 100
+        num_qubits = 4
+        qreg = QuantumRegister(num_qubits, "q")
+        creg = ClassicalRegister(len(qreg))
+        coupling = CouplingMap([(i, i + 1) for i in range(num_qubits - 1)])
+        qc = QuantumCircuit(qreg, creg)
+        while_body = QuantumCircuit(qreg, creg)
+        while_body.reset(qreg[2:])
+        while_body.h(qreg[2:])
+        while_body.compose(CCXGate().definition, [2, 3, 0], inplace=True)
+        while_body.measure(qreg[0], creg[0])
+        qc.while_loop((creg, 0), while_body, qc.qubits, qc.clbits)
+        qc.barrier()
+        qc.measure(qreg, creg)
+
+        dag = circuit_to_dag(qc)
+        cdag = StochasticSwap(coupling, seed=58).run(dag)
+        cqc = dag_to_circuit(cdag)
+        sim = Aer.get_backend("aer_simulator")
+        in_results = sim.run(qc, shots=shots, seed_simulator=10).result().get_counts()
+        out_results = sim.run(cqc, shots=shots, seed_simulator=11).result().get_counts()
+        self.assertLess(hellinger_distance(in_results, out_results), 0.01)
+
+    @unittest.skipUnless(optionals.HAS_AER, "Qiskit Aer is required to run this test")
+    @data(392, 2023, 45, 27, 68)
+    def test_controlflow_nested_inner_cnot(self, seed):
+        """test swap in nested if else controlflow construct; swap in inner"""
+        num_qubits = 5
+        qreg = QuantumRegister(num_qubits, "q")
+        creg = ClassicalRegister(num_qubits)
+        coupling = CouplingMap([(i, i + 1) for i in range(num_qubits - 1)])
+        qc = QuantumCircuit(qreg, creg)
+        qc.h(0)
+        qc.x(1)
+        qc.measure(0, 0)
+        true_body = QuantumCircuit(qreg, creg)
+        true_body.x(0)
+
+        for_body = QuantumCircuit(qreg, creg)
+        for_body.delay(10, 0)
+        for_body.cx(1, 3)
+        loop_parameter = None
+        true_body.for_loop(range(3), loop_parameter, for_body, qreg, creg)
+
+        false_body = QuantumCircuit(qreg, creg)
+        false_body.y(0)
+        qc.if_else((creg[0], 0), true_body, false_body, qreg, creg)
+        qc.barrier()
+        qc.measure(qreg, creg)
+
+        dag = circuit_to_dag(qc)
+        cdag = StochasticSwap(coupling, seed=seed).run(dag)
+        cqc = dag_to_circuit(cdag)
+
+        sim = Aer.get_backend("aer_simulator")
+        in_results = sim.run(qc, shots=4096, seed_simulator=10).result().get_counts()
+        out_results = sim.run(cqc, shots=4096, seed_simulator=11).result().get_counts()
+        self.assertLess(hellinger_distance(in_results, out_results), 0.01)
+
+    @unittest.skipUnless(optionals.HAS_AER, "Qiskit Aer is required to run this test")
+    @data(392, 2023, 45, 27, 68)
+    def test_controlflow_nested_outer_cnot(self, seed):
+        """test swap with nested if else controlflow construct; swap in outer"""
+        num_qubits = 5
+        qreg = QuantumRegister(num_qubits, "q")
+        creg = ClassicalRegister(num_qubits)
+        coupling = CouplingMap([(i, i + 1) for i in range(num_qubits - 1)])
+        qc = QuantumCircuit(qreg, creg)
+        qc.h(0)
+        qc.x(1)
+        qc.measure(0, 0)
+        true_body = QuantumCircuit(qreg, creg)
+        true_body.cx(0, 2)
+        true_body.x(0)
+
+        for_body = QuantumCircuit(qreg, creg)
+        for_body.delay(10, 0)
+        for_body.cx(1, 3)
+        loop_parameter = None
+        true_body.for_loop(range(5), loop_parameter, for_body, qreg, creg)
+
+        false_body = QuantumCircuit(qreg, creg)
+        # false_body.cx(0, 4)
+        false_body.y(0)
+        qc.if_else((creg[0], 0), true_body, false_body, qreg, creg)
+        qc.barrier()
+        qc.measure(qreg, creg)
+
+        dag = circuit_to_dag(qc)
+        cdag = StochasticSwap(coupling, seed=seed).run(dag)
+        cqc = dag_to_circuit(cdag)
+
+        sim = Aer.get_backend("aer_simulator")
+        in_results = sim.run(qc, shots=4096, seed_simulator=10).result().get_counts()
+        out_results = sim.run(cqc, shots=4096, seed_simulator=11).result().get_counts()
+        self.assertLess(hellinger_distance(in_results, out_results), 0.01)
+
+    @unittest.skipUnless(optionals.HAS_AER, "Qiskit Aer is required to run this test")
+    def test_controlflow_continue(self):
+        """test controlflow continue"""
+        num_qubits = 5
+        qreg = QuantumRegister(num_qubits, "q")
+        creg = ClassicalRegister(num_qubits)
+        coupling = CouplingMap([(i, i + 1) for i in range(num_qubits - 1)])
+        qc = QuantumCircuit(qreg, creg)
+        qc.h(0)
+        for_body = QuantumCircuit(qreg, creg)
+        for_body.cx(0, 2)
+        for_body.continue_loop()
+
+        loop_parameter = None
+        qc.for_loop(range(3), loop_parameter, for_body, qreg, creg)
+        qc.barrier()
+        qc.measure(qreg, creg)
+
+        dag = circuit_to_dag(qc)
+        cdag = StochasticSwap(coupling, seed=10).run(dag)
+        cqc = dag_to_circuit(cdag)
+
+        sim = Aer.get_backend("aer_simulator")
+        in_results = sim.run(qc, shots=4096, seed_simulator=10).result().get_counts()
+        out_results = sim.run(cqc, shots=4096, seed_simulator=11).result().get_counts()
+        self.assertLess(hellinger_distance(in_results, out_results), 0.01)
 
 
 if __name__ == "__main__":

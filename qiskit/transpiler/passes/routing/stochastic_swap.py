@@ -19,9 +19,13 @@ import numpy as np
 from qiskit.circuit.quantumregister import QuantumRegister
 from qiskit.transpiler.basepasses import TransformationPass
 from qiskit.transpiler.exceptions import TranspilerError
+from qiskit.transpiler.coupling import CouplingMap
 from qiskit.dagcircuit import DAGCircuit
 from qiskit.circuit.library.standard_gates import SwapGate
+from qiskit.circuit.exceptions import CircuitError
 from qiskit.transpiler.layout import Layout
+from qiskit.circuit import IfElseOp, WhileLoopOp, ForLoopOp
+from qiskit.converters import dag_to_circuit, circuit_to_dag
 
 from qiskit._accelerate import stochastic_swap as stochastic_swap_rs
 
@@ -43,7 +47,7 @@ class StochasticSwap(TransformationPass):
            the circuit.
     """
 
-    def __init__(self, coupling_map, trials=20, seed=None, fake_run=False):
+    def __init__(self, coupling_map, trials=20, seed=None, fake_run=False, initial_layout=None):
         """StochasticSwap initializer.
 
         The coupling map is a connected graph
@@ -66,6 +70,7 @@ class StochasticSwap(TransformationPass):
         self.qregs = None
         self.rng = None
         self.trivial_layout = None
+        self.initial_layout = initial_layout
         self._qubit_indices = None
 
     def run(self, dag):
@@ -89,7 +94,10 @@ class StochasticSwap(TransformationPass):
             raise TranspilerError("The layout does not match the amount of qubits in the DAG")
 
         canonical_register = dag.qregs["q"]
-        self.trivial_layout = Layout.generate_trivial_layout(canonical_register)
+        if self.initial_layout:
+            self.trivial_layout = self.initial_layout
+        else:
+            self.trivial_layout = Layout.generate_trivial_layout(canonical_register)
         self._qubit_indices = {bit: idx for idx, bit in enumerate(dag.qubits)}
 
         self.qregs = dag.qregs
@@ -278,16 +286,28 @@ class StochasticSwap(TransformationPass):
             dagcircuit_output = circuit_graph.copy_empty_like()
 
         logger.debug("trivial_layout = %s", layout)
-
         # Iterate over layers
         for i, layer in enumerate(layerlist):
+            subdag = layer["graph"]
+            cf_layer = False
+            cf_layout = None
+            for node in subdag.control_flow_ops():
+                updated_ctrl_op, cf_layout = self._transpile_controlflow_op(node.op, layout)
+                node.op = updated_ctrl_op
+                cf_layer = True
+            if cf_layer or (subdag.depth() == 1 and subdag.op_nodes()[0].name == "continue_loop"):
+                cf_layer = True  # continue_loop treated like control flow here
+                order = layout.reorder_bits(dagcircuit_output.qubits)
+                dagcircuit_output.compose(subdag, qubits=order)
+                success_flag = True
+            else:
+                # Attempt to find a permutation for this layer
+                success_flag, best_circuit, best_depth, best_layout = self._layer_permutation(
+                    layer["partition"], layout, qubit_subset, coupling_graph, trials
+                )
 
-            # Attempt to find a permutation for this layer
-            success_flag, best_circuit, best_depth, best_layout = self._layer_permutation(
-                layer["partition"], layout, qubit_subset, coupling_graph, trials
-            )
-            logger.debug("mapper: layer %d", i)
-            logger.debug("mapper: success_flag=%s,best_depth=%s", success_flag, str(best_depth))
+                logger.debug("mapper: layer %d", i)
+                logger.debug("mapper: success_flag=%s,best_depth=%s", success_flag, str(best_depth))
 
             # If this fails, try one gate at a time in this layer
             if not success_flag:
@@ -324,7 +344,9 @@ class StochasticSwap(TransformationPass):
                             best_circuit,
                         )
 
-            else:
+            elif not cf_layer and not (
+                subdag.depth() == 1 and subdag.op_nodes()[0].name == "continue_loop"
+            ):
                 # Update the record of qubit positions for each iteration
                 layout = best_layout
 
@@ -333,13 +355,130 @@ class StochasticSwap(TransformationPass):
                     self._layer_update(
                         dagcircuit_output, layerlist[i], best_layout, best_depth, best_circuit
                     )
-
+            elif cf_layout:
+                layout = cf_layout
         # This is the final edgemap. We might use it to correctly replace
         # any measurements that needed to be removed earlier.
         logger.debug("mapper: self.trivial_layout = %s", self.trivial_layout)
         logger.debug("mapper: layout = %s", layout)
 
+        self.property_set["final_layout"] = layout
         if self.fake_run:
-            self.property_set["final_layout"] = layout
             return circuit_graph
         return dagcircuit_output
+
+    def _transpile_controlflow_op(self, cf_op, current_layout):
+        """handle controlflow ops by type"""
+        if isinstance(cf_op, IfElseOp):
+            return self._transpile_controlflow_multiblock(cf_op, current_layout)
+        elif isinstance(cf_op, (ForLoopOp, WhileLoopOp)):
+            return self._transpile_controlflow_looping(cf_op, current_layout)
+        return cf_op, current_layout
+
+    def _transpile_controlflow_multiblock(self, cf_op, current_layout):
+        # pylint: disable=cyclic-import
+        from qiskit.transpiler.passes.routing import LayoutTransformation
+
+        block_circuits = []  # control flow circuit blocks
+        block_dags = []  # control flow dag blocks
+        block_layouts = []  # control flow layouts
+        new_coupling = layout_transform(self.coupling_map, current_layout)
+
+        for i, block in enumerate(cf_op.blocks):
+            dag_block = circuit_to_dag(block)
+            _pass = self.__class__(new_coupling, initial_layout=None, seed=self.seed)
+            updated_dag_block = _pass.run(dag_block)
+            block_dags.append(updated_dag_block)
+            block_layouts.append(_pass.property_set["final_layout"].copy())
+            # block_layouts.append(_pass.property_set["final_layout"].copy())
+        changed_layouts = [current_layout != layout for layout in block_layouts]
+        if not any(changed_layouts):
+            return cf_op, current_layout
+        depth_cnt = [bdag.depth() for bdag in block_dags]
+        maxind = np.argmax(depth_cnt)
+        for i, dag in enumerate(block_dags):
+            if i == maxind:
+                block_circuits.append(dag_to_circuit(dag))
+            else:
+                layout_xform = LayoutTransformation(
+                    new_coupling,
+                    block_layouts[i],
+                    block_layouts[maxind],
+                )
+                match_dag = layout_xform.run(dag)
+                block_circuits.append(dag_to_circuit(match_dag))
+
+        final_permutation = combine_permutations(
+            list(current_layout.get_physical_bits().keys()),
+            list(block_layouts[maxind].get_physical_bits().keys()),
+        )
+        final_layout = Layout.from_intlist(final_permutation, *self.qregs.values())
+        return cf_op.replace_blocks(block_circuits), final_layout
+
+    def _transpile_controlflow_looping(self, cf_op, current_layout):
+        """for looping this pass adds a swap layer at the end of the loop body to bring
+        the layout back to the expected starting layout. This could be reduced a bit by
+        specializing to for_loop and while_loop. If the loop body contains a "continue_loop", the
+        swap layer is placed before the continue". No check is done to make sure "continue" is final
+        statement in loop block.
+        """
+        # pylint: disable=cyclic-import
+        from qiskit.transpiler.passes.routing import LayoutTransformation
+
+        def _move_continue_to_end(dag):
+            """Check if continue exists in block. If it does move it to the end of the circuit
+            so layout_xform doesn't get skipped."""
+            continue_nodes = dag.named_nodes("continue_loop")
+            if continue_nodes:
+                if len(continue_nodes) > 1:
+                    raise CircuitError("Multiple 'continue' statements contained in loop")
+                if len(continue_nodes) <= 1:
+                    c_node = continue_nodes[-1]
+                    dag.remove_op_node(c_node)
+                    dag.apply_operation_back(c_node.op, c_node.qargs, c_node.cargs)
+            return dag
+
+        new_coupling = layout_transform(self.coupling_map, current_layout)
+        dag_block = circuit_to_dag(cf_op.blocks[0])
+        _pass = self.__class__(new_coupling, initial_layout=None, seed=self.seed)
+        start_qreg = QuantumRegister(len(self._qubit_indices), "q")
+        start_layout = Layout.generate_trivial_layout(start_qreg)
+        updated_dag_block = _pass.run(dag_block)
+        updated_layout = _pass.property_set["final_layout"].copy()
+
+        layout_xform = LayoutTransformation(new_coupling, updated_layout, start_layout)
+        match_dag = layout_xform.run(updated_dag_block)
+        match_dag = _move_continue_to_end(match_dag)
+
+        match_circ = dag_to_circuit(match_dag)
+        return cf_op.replace_blocks([match_circ]), current_layout
+
+
+def combine_permutations(*permutations):
+    """
+    chain a series of permutations
+    """
+    order = permutations[0]
+    for this_order in permutations[1:]:
+        order = [order[i] for i in this_order]
+    return order
+
+
+def layout_transform(cmap, layout, qreg=None):
+    """Transform coupling map according to layout.
+
+    Args:
+       cmap (CouplingMap): coupling map to transform
+       layout (Layout): layout to apply
+       qreg (QuantumRegister): register to use for indexing
+    Returns:
+       CouplingMap: coupling map under specified layout.
+    """
+    if qreg is None:
+        qreg = QuantumRegister(len(layout), "q")
+    new_map = []
+    vmap = layout.get_virtual_bits()
+    for bit0, bit1 in cmap.get_edges():
+        qubit0, qubit1 = qreg[bit0], qreg[bit1]
+        new_map.append([vmap[qubit0], vmap[qubit1]])
+    return CouplingMap(couplinglist=new_map)
