@@ -430,12 +430,9 @@ class StochasticSwap(TransformationPass):
             so layout_xform doesn't get skipped."""
             continue_nodes = dag.named_nodes("continue_loop")
             if continue_nodes:
-                if len(continue_nodes) > 1:
-                    raise CircuitError("Multiple 'continue' statements contained in loop")
-                if len(continue_nodes) <= 1:
-                    c_node = continue_nodes[-1]
-                    dag.remove_op_node(c_node)
-                    dag.apply_operation_back(c_node.op, c_node.qargs, c_node.cargs)
+                c_node = continue_nodes[-1]
+                dag.remove_op_node(c_node)
+                dag.apply_operation_back(c_node.op, c_node.qargs, c_node.cargs)
             return dag
 
         new_coupling = layout_transform(self.coupling_map, current_layout)
